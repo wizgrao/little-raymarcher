@@ -2,10 +2,10 @@
 #include <unistd.h>
 #include <math.h>
 #define s3 .5774
-#define EPS 1e-4
+#define EPS 1e-3
 char* legend = " .:-=+*#%@";
-int w = 90;
-int h = 45;
+int w = 180;
+int h = 90;
 int chars = 10;
 int rounds = 12;
 typedef struct v {float x,  y, z;} v;
@@ -98,6 +98,6 @@ int main() {
       putchar('\n');
     }
     counter += 0.01;
-    puts("\x1b[46A");
+    puts("\x1b[91A");
   }
 }
