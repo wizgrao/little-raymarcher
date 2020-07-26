@@ -92,6 +92,6 @@ float sdfCap(renderable, v);
 
 renderable cap(renderable, renderable);
 
-void render(renderable a, v *lightc, int lightv);
+void render(renderable a, v *lightc, int lightv, int);
 
 #endif //  RAY_H_

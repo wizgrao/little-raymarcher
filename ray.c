@@ -206,7 +206,7 @@ renderable cap(renderable a, renderable b) {
   return ret;
 }
 
-void render(renderable a, v* lightc, int lightv) {
+void render(renderable a, v* lightc, int lightv, int shadows) {
   int row, col;
   getmaxyx(stdscr, row, col);
   float *buffer = calloc(row*col, sizeof(float));
@@ -221,6 +221,22 @@ void render(renderable a, v* lightc, int lightv) {
         for(int ii = 0; ii < rounds; ii++) {
           float curSDF = a.sdf(a, pos);
           if(curSDF < EPS) {
+            if(shadows) {
+              v lightDir = vnormalize(scale(-1, lightc[li]));
+              v newPos = add(pos, scale(2 * EPS, lightDir));
+              int found = 0;
+              for(int jj = 0; jj < rounds; jj++) {
+                 float ss = a.sdf(a, newPos);
+                 if(ss < EPS) {
+                   found = 1;
+                   break;
+                 }
+                 newPos = add(scale(ss, lightDir), newPos);
+              }
+              if(found) {
+                break;
+              }
+            }
             *(buffer + i*col + j) += min(.9, max(0.1, -dot(lightc[li], sdfNorm(a, pos))));
             break;
           }
@@ -341,13 +357,14 @@ int main() {
   keypad(stdscr, TRUE);
   noecho();
   renderable comp = dick(1.2, 1, 6, 1.2, .6);
+  //renderable comp = cup(newHalf(vec(0,2,0), vec(0,-1,0)), newCyl(vec(0,2,0), vec(0,-1,0), 1, 2));
   renderable final = transformRenderable(comp, trans(vec(2, 0, -3)));
   td *tt = (td *) final.data;
   v l1 = {-s3/2, s3/2, s3/2};
   v l2 = {s3/2, s3/2, s3/2};
   v lights[] = {l1, l2};
   while (1) {
-    render(final, lights, 2);
+    render(final, lights, 2, 1);
     char yee[80];
     dt(yee, tt->trans);
     mvprintw(0,0, yee);
@@ -367,6 +384,12 @@ int main() {
         break;
       case KEY_RIGHT:
         tt->trans = tmult( tt->trans,roty(-0.05));
+        break;
+      case 'q':
+        tt->trans = tmult( tt->trans,rotz(0.05));
+        break;
+      case 'e':
+        tt->trans = tmult( tt->trans,rotz(-0.05));
         break;
       case 'w':
         tt->trans = tmult( tt->trans,trans(vec(0,0,0.1)));
