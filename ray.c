@@ -11,7 +11,7 @@ char* legend = " .:-=+*#%@";
 int w = 90;
 int h = 45;
 int chars = 10;
-int rounds = 40;
+int rounds = 80;
 
 float counter = 0;
 
@@ -72,7 +72,7 @@ float min(float a, float b) {
 }
 
 v proj(v a, v b) {
-  return scale(dot(a, b), b);
+  return scale(dot(a, b)/dot(b, b), b);
 }
 
 float torus(v c, float br, float sr, v axis, v vec) {
@@ -98,9 +98,41 @@ renderable newTorus(v center, v axis, float br, float sr) {
   sd->axis = axis;
   sd->br = br;
   sd->sr = sr;
-  renderable ret = { sd, &sdfTorus };
+  renderable ret = { sd, &sdfTorus, &superDestroy};
   return ret;
 }
+
+renderable newRod(v center, v normal, float r) {
+  rod *sd = (rod *) malloc(sizeof(rod));
+  sd->center = center;
+  sd->normal= normal;
+  sd->r = r;
+  renderable ret = { sd, &sdfRod, &superDestroy};
+  return ret;
+}
+
+float sdfRod(renderable torus, v x) {
+  rod *t = (rod *)torus.data;
+  v relpos = sub(x, t->center);
+  v projpos = proj(relpos, t->normal);
+  return dist(relpos, projpos) - t->r;
+}
+
+renderable newCyl(v center, v normal, float r, float l) {
+  renderable rod = newRod(center, normal, r);
+  renderable half1 = newHalf(center, scale(-1, normal));
+  renderable half2 = newHalf(add(scale(l, normal), center), normal);
+  return cap(cap(rod, half1), half2);
+}
+
+renderable newRenderable() {
+ renderable r =  {NULL, &blankSDF, &superDestroy};
+ return r;
+}
+void superDestroy(renderable r) {
+  free(r.data);
+}
+
 
 v sdfNorm(renderable rend, v x) {
   v dx = {x.x + EPS, x.y, x.z};
@@ -120,7 +152,20 @@ renderable newSphere(v center, float r) {
   spheredat *sd = (spheredat *) malloc(sizeof(spheredat));
   sd->center = center;
   sd->r = r;
-  renderable ret = { sd, &sdfSphere };
+  renderable ret = { sd, &sdfSphere, &superDestroy };
+  return ret;
+}
+
+float sdfHalf(renderable half, v x) {
+  halfdat *hd = (halfdat *) half.data;
+  return dot(hd->normal, sub(x, hd->center)); 
+}
+
+renderable newHalf(v center, v normal) {
+  halfdat *hd = (halfdat *) malloc(sizeof(halfdat));
+  hd-> center = center;
+  hd->normal = normal;
+  renderable ret = {hd, &sdfHalf, &superDestroy };
   return ret;
 }
 
@@ -133,11 +178,18 @@ float sdfCup(renderable r, v x) {
   return min(c->a.sdf(c->a, x), c->b.sdf(c->b, x));
 }
 
+void cprDestroy(renderable r) {
+  cpr *c = (cpr *) r.data;
+  c->a.destroy(c->a);
+  c->b.destroy(c->b);
+  superDestroy(r);
+}
+
 renderable cup(renderable a, renderable b) {
   cpr *c = (cpr *) malloc(sizeof(cpr));
   c->a = a;
   c->b = b;
-  renderable ret = { c, &sdfCup };
+  renderable ret = { c, &sdfCup, &cprDestroy };
   return ret;
 }
 
@@ -150,7 +202,7 @@ renderable cap(renderable a, renderable b) {
   cpr *c = (cpr *) malloc(sizeof(cpr));
   c->a = a;
   c->b = b;
-  renderable ret = { c, &sdfCap };
+  renderable ret = { c, &sdfCap, &cprDestroy };
   return ret;
 }
 
@@ -251,8 +303,36 @@ renderable transformRenderable(renderable r, t a) {
   td *d = (td *) malloc(sizeof(td));
   d->r = r;
   d->trans = a;
-  renderable ret = { d, &sdfTransform };
+  renderable ret = { d, &sdfTransform, &destroyTransform };
   return ret;
+}
+
+void destroyTransform(renderable r) {
+  td *d = (td *) r.data;
+  d->r.destroy(d->r);
+  superDestroy(r);
+}
+
+renderable dick(float headR, float shaftr, float length, float ballR, float ballOffset) {
+  renderable headBall = newSphere(vec(0,0,0), headR);
+  renderable halfHead = cap(headBall, newHalf(vec(0,0,0), vec(1, 0, 0)));
+  renderable shaft = newCyl(vec(0,0,0), vec(1, 0, 0), shaftr, length - headR);
+  renderable ball1 = newSphere(vec(length - headR, ballOffset, 0), ballR);
+  renderable ball2 = newSphere(vec(length - headR, -ballOffset, 0), ballR);
+  
+  return cup(ball2, cup(ball1, cup(halfHead, shaft)));
+}
+
+renderable coolTestScene() {
+  v center1 = {.5, 0, 0};
+  v center = {-.5, 0, 0};
+  float r = 1;
+  renderable s = newSphere(center, r);
+  renderable s1 = newSphere(center1, r);
+  renderable t1 = newTorus(vec(0, 0,0), vec(0,0,1), 1.5, .5);
+  renderable cyl = newCyl(vec(0, 0, 2), vec(0, -1, 0), 1, 2);
+  renderable comp = cup(cap(s, s1), cup(t1, cyl));
+  return comp;
 }
 
 int main() {
@@ -260,18 +340,12 @@ int main() {
   cbreak();
   keypad(stdscr, TRUE);
   noecho();
-  v center1 = {.5, 0, 0};
-  v center = {-.5, 0, 0};
-  float r = 1;
+  renderable comp = dick(1.2, 1, 6, 1.2, .6);
+  renderable final = transformRenderable(comp, trans(vec(2, 0, -3)));
+  td *tt = (td *) final.data;
   v l1 = {-s3/2, s3/2, s3/2};
   v l2 = {s3/2, s3/2, s3/2};
   v lights[] = {l1, l2};
-  renderable s = newSphere(center, r);
-  renderable s1 = newSphere(center1, r);
-  renderable t1 = newTorus(vec(0, 0,0), vec(0,0,1), 1.5, .5);
-  renderable c = cup(t1, cap(s, s1));
-  renderable final = transformRenderable(c, trans(vec(0, 0, -3)));
-  td *tt = (td *) final.data;
   while (1) {
     render(final, lights, 2);
     char yee[80];
@@ -306,13 +380,16 @@ int main() {
       case 'd':
         tt->trans = tmult( tt->trans,trans(vec(.1,0,0)));
         break;
+      case ' ':
+        tt->trans = tmult( tt->trans,trans(vec(0,.10,0)));
+        break;
+      case 'c':
+        tt->trans = tmult( tt->trans,trans(vec(0,-.10,0)));
+        break;
       default:
         break;
 
     }
   }
-  destroySphere(s1);
-  destroySphere(s);
-  free(t1.data);
-  free(c.data);
+  final.destroy(final);
 }
